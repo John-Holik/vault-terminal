@@ -6,6 +6,9 @@
   const TAB_KEY = "vt.tab";
 
   document.body.classList.add("plat-" + A.platform);
+  // Mutable copy of the boot settings snapshot (the bridge-exposed object is frozen). terminal.js reads
+  // defaults from it at spawn time; save() below patches it so new panes see changes without a reload.
+  window.vtSettings = { ...A.settings };
 
   /* ---- tabs ---- */
   function activateTab(name) {
@@ -56,12 +59,12 @@
   /* ---- settings modal ---- */
   const modal = $("settings");
   // Patch the boot snapshot too, so terminal.js picks the new defaults up for the next pane without a reload.
-  const save = (patch) => { Object.assign(A.settings, patch); return A.setSettings(patch); };
+  const save = (patch) => { Object.assign(window.vtSettings, patch); return A.setSettings(patch); };
 
   function renderHooks(st) {
     const el = $("s-hooks-status");
     let kind, text;
-    if (st.installed) { kind = "ok"; text = "Installed" + (st.nodePath ? " · " + st.nodePath : ""); }
+    if (st.installed) { kind = "ok"; text = "Installed in " + (st.hooksDir || "the app data folder"); }
     else if (st.reason) { kind = "warn"; text = st.reason; }
     else { kind = ""; text = "Not installed"; }
     el.className = "fstatus " + kind;

@@ -3,9 +3,9 @@
   const A = window.api;
   const E = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   // Resolved by settings.js in main (never null): the configured folder, else the home dir.
-  const DEFAULT_CWD = () => A.settings.defaultCwd; // read live: app.js patches A.settings when the modal saves
+  const DEFAULT_CWD = () => window.vtSettings.defaultCwd; // app.js owns window.vtSettings (mutable copy of api.settings) and patches it when the modal saves
   // Resolved by settings.js in main (never null): the configured shell id, else shells.defaultShellId().
-  const DEFAULT_SHELL = () => A.settings.defaultShell;
+  const DEFAULT_SHELL = () => window.vtSettings.defaultShell;
   const IS_MAC = A.platform === "darwin";
 
   const baseName = (p) => (p || "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || (p || "");
@@ -553,7 +553,9 @@
     const th = THEMES[cell.themeKey] || THEMES.indigo;
     const term = new Terminal({
       fontFamily: "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",
-      fontSize: A.settings.fontSize, cursorBlink: true, allowProposedApi: true, scrollback: 5000,
+      fontSize: window.vtSettings.fontSize, cursorBlink: true, allowProposedApi: true, scrollback: 5000,
+      rightClickSelectsWord: false, // xterm defaults this on for macOS; it would fight the right-click copy/paste handler below
+      macOptionIsMeta: A.platform === "darwin", // Claude Code's Option+Enter / Option+P shortcuts need Option sent as Meta
       theme: th.theme,
     });
     const fit = new FitAddon.FitAddon();
@@ -1055,14 +1057,9 @@
       });
     } catch { /* ignore */ }
   }
-  function notifyOS(cell) {
-    try {
-      if (typeof Notification === "undefined") return;
-      const show = () => new Notification("Agent finished", { body: cell.name, silent: true });
-      if (Notification.permission === "granted") show();
-      else if (Notification.permission !== "denied") Notification.requestPermission().then((p) => { if (p === "granted") show(); });
-    } catch { /* ignore */ }
-  }
+  // Main-process notification: on an unsigned macOS build the OS may refuse it, and only main can see
+  // that failure (it bounces the Dock instead).
+  function notifyOS(cell) { A.notify("Agent finished", cell.name); }
   function tickActivity() {
     const now = Date.now();
     for (const g of grids) {

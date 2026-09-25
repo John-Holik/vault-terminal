@@ -1,0 +1,99 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: --win --x64
+          # macos-15 is arm64, macos-15-intel is x64 (macos-13/14 are retired or retiring)
+          - os: macos-15
+            args: --mac --arm64
+          - os: macos-15-intel
+            args: --mac --x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      # No Developer ID: never pick up a signing identity from the runner keychain.
+      # The mac build is ad-hoc signed via build.mac.identity "-"; Windows is unsigned.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Tag must match package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      # Never add --omit=optional: @lydell/node-pty ships its per-platform prebuilds as
+      # optional dependencies, and npm ci installs only the one matching this runner.
+      - run: npm ci
+      - name: node-pty prebuilt for this runner is installed and loads
+        run: node -e "require('@lydell/node-pty'); console.log('node-pty ok', process.platform, process.arch)"
+      # smoke.js launches Electron with VT_SMOKE=1 and exits non-zero on failure.
+      # Hosted macOS and Windows runners have a GUI session, so no virtual display is needed.
+      - name: Smoke test
+        run: npm run smoke
+        timeout-minutes: 5
+      - name: Package
+        run: npx electron-builder ${{ matrix.args }} --publish never
+      # Loads node-pty from inside the packaged app and spawns a shell: checks asarUnpack,
+      # the platform prebuild and (on mac) spawn-helper in the signed bundle.
+      - name: Packaged app can spawn a PTY
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            APP=$(ls -d dist/mac*/*.app | head -1); EXE="$APP/Contents/MacOS/Vault Terminal"; RES="$APP/Contents/Resources"
+          else
+            EXE="dist/win-unpacked/Vault Terminal.exe"; RES="$(cd dist/win-unpacked/resources && pwd -W)"
+          fi
+          RES="$RES" ELECTRON_RUN_AS_NODE=1 "$EXE" -e '
+            const pty = require(process.env.RES + "/app.asar/node_modules/@lydell/node-pty");
+            const p = process.platform === "win32" ? pty.spawn("cmd.exe", ["/c", "echo PTY_OK"], {}) : pty.spawn("/bin/sh", ["-c", "echo PTY_OK"], {});
+            let b = ""; p.onData((d) => (b += d));
+            p.onExit(() => { console.log(JSON.stringify(b)); process.exit(b.includes("PTY_OK") ? 0 : 1); });
+            setTimeout(() => process.exit(2), 15000);'
+      - name: Check mac bundle (ad-hoc signature, spawn-helper executable)
+        if: runner.os == 'macOS'
+        run: |
+          APP=$(ls -d dist/mac*/*.app | head -1)
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv "$APP" 2>&1 | grep "Signature=adhoc"
+          HELPER=$(find "$APP/Contents/Resources/app.asar.unpacked" -name spawn-helper | head -1)
+          test -n "$HELPER" && test -x "$HELPER"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+          if-no-files-found: error
+  # One release job after all builds finish, so the three build jobs don't race to create
+  # the same GitHub release. Only it gets contents: write.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          pattern: dist-*
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

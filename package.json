@@ -9,18 +9,76 @@
   "scripts": {
     "start": "electron .",
     "smoke": "node smoke.js",
-    "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
-    "dist:mac": "electron-builder --mac"
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:mac": "electron-builder --mac --publish never"
   },
   "devDependencies": {
-    "electron": "^42.4.0",
+    "electron": "^44.4.5",
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.2.5",
-    "@lydell/node-pty": "^1.2.0-beta.12",
+    "@lydell/node-pty": "1.2.0-beta.15",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0"
+  },
+  "build": {
+    "appId": "com.johnholik.vaultterminal",
+    "productName": "Vault Terminal",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!*.md",
+      "!.github${/*}",
+      "!smoke.js",
+      "!.gitattributes"
+    ],
+    "asarUnpack": [
+      "**/node_modules/@lydell/node-pty*/**"
+    ],
+    "npmRebuild": false,
+    "publish": null,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${name}-${version}-win-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "Vault Terminal"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "notarize": false,
+      "timestamp": "none",
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "Commands you run in Vault Terminal (ssh, dev servers, curl) may connect to devices on your local network.",
+        "NSDocumentsFolderUsageDescription": "Commands you run in Vault Terminal may read or write files in your Documents folder.",
+        "NSDesktopFolderUsageDescription": "Commands you run in Vault Terminal may read or write files on your Desktop.",
+        "NSDownloadsFolderUsageDescription": "Commands you run in Vault Terminal may read or write files in your Downloads folder.",
+        "NSRemovableVolumesUsageDescription": "Commands you run in Vault Terminal may access files on removable drives.",
+        "NSNetworkVolumesUsageDescription": "Commands you run in Vault Terminal may access files on network volumes."
+      },
+      "artifactName": "${name}-${version}-mac-${arch}.${ext}"
+    }
   }
 }

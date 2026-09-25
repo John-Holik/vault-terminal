@@ -37,6 +37,8 @@
   const term = new Terminal({
     fontFamily: "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",
     fontSize: A.settings.fontSize, cursorBlink: true, allowProposedApi: true, scrollback: 5000,
+    rightClickSelectsWord: false, // see terminal.js mountTerm
+    macOptionIsMeta: A.platform === "darwin",
     theme: th.theme,
   });
   const fit = new FitAddon.FitAddon();
