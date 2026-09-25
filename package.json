@@ -1,0 +1,26 @@
+{
+  "name": "vault-terminal",
+  "productName": "Vault Terminal",
+  "version": "0.1.0",
+  "description": "Terminal multiplexer for Claude Code and everyday shells: workspaces, per-pane colors, pop-out windows, broadcast typing",
+  "author": "John Holik",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "node smoke.js",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.5",
+    "@lydell/node-pty": "^1.2.0-beta.12",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0"
+  }
+}
