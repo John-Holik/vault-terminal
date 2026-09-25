@@ -12,6 +12,7 @@ const DEFAULTS = {
   claudeHooks: true,           // install/keep the 3 pane hooks in ~/.claude
   fontSize: 12.5,              // xterm fontSize (renderer reads it)
   closeToTray: true,           // window close hides to tray while PTYs are alive
+  macOptionIsMeta: true,       // macOS: Option sends Meta (Claude's Option+P/T); off to type @ [ ] { } | ~ on non-US layouts
 };
 
 function settingsFile() { return path.join(app.getPath("userData"), "settings.json"); }

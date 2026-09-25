@@ -38,7 +38,7 @@
     fontFamily: "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",
     fontSize: A.settings.fontSize, cursorBlink: true, allowProposedApi: true, scrollback: 5000,
     rightClickSelectsWord: false, // see terminal.js mountTerm
-    macOptionIsMeta: A.platform === "darwin",
+    macOptionIsMeta: A.platform === "darwin" && !!A.settings.macOptionIsMeta, // setting, see terminal.js mountTerm
     theme: th.theme,
   });
   const fit = new FitAddon.FitAddon();
@@ -90,12 +90,13 @@
       return true; // Cmd+V: the Edit menu's native paste reaches xterm's textarea as a paste event
     }
     if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return true;
-    if (k === "c") {
+    // keyCode, not e.key: stays C (67) / V (86) on non-Latin layouts (see terminal.js mountTerm)
+    if (e.keyCode === 67) {
       e.preventDefault();
       if (term.hasSelection()) A.clipWriteText(term.getSelection());
       return false;
     }
-    if (k === "v") {
+    if (e.keyCode === 86) {
       e.preventDefault(); // stop Chromium's own Ctrl+Shift+V paste-as-plain-text, which would paste twice
       A.clipReadText().then((t) => { if (t) term.paste(t); });
       return false;

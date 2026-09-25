@@ -16,9 +16,11 @@ let claudeBin = null;
 let codexBin = null;
 let binsResolved = false;
 
-// GUI-launched apps on macOS get a bare /usr/bin:/bin:/usr/sbin:/sbin, so ask the user's login shell
-// for its PATH and merge it in: login entries first, then the original, then common install dirs.
-// No-op on win32. Never throws; on failure the original PATH is kept.
+// GUI-launched apps on macOS get launchd's bare environment (PATH /usr/bin:/bin:/usr/sbin:/sbin, none of
+// the user's exports), so ask the user's login shell for its environment and merge it in: every exported
+// variable (API keys, proxies, CLAUDE_CONFIG_DIR, ...) into process.env, and PATH as login entries first,
+// then the original, then common install dirs. No-op on win32. Never throws; on failure the original
+// environment is kept.
 function loginPath() {
   if (WIN) return;
   const orig = (process.env.PATH || "").split(":");
@@ -26,11 +28,22 @@ function loginPath() {
   try {
     // Interactive + login so both ~/.zshrc (Claude installer) and ~/.zprofile (Codex installer) apply.
     // The env guards stop oh-my-zsh update prompts / tmux autostart from stalling the probe.
-    const env = { ...process.env, DISABLE_AUTO_UPDATE: "true", ZSH_TMUX_AUTOSTART: "false", ZSH_TMUX_AUTOSTARTED: "true" };
-    const r = spawnSync(userShell(), ["-ilc", "echo __VT_PATH__$PATH"], { encoding: "utf8", timeout: 8000, env });
-    const line = (r.stdout || "").split("\n").filter((l) => l.includes("__VT_PATH__")).pop();
-    if (line) login = line.slice(line.indexOf("__VT_PATH__") + "__VT_PATH__".length).trim().split(":");
-  } catch { /* keep the original PATH */ }
+    const guards = { DISABLE_AUTO_UPDATE: "true", ZSH_TMUX_AUTOSTART: "false", ZSH_TMUX_AUTOSTARTED: "true" };
+    const env = { ...process.env, ...guards };
+    // The shell runs this app's binary as Node to print its environment as one JSON line between markers.
+    // The command is plain enough for sh/bash/zsh/fish, fish exports its PATH list colon-joined, and JSON
+    // keeps multi-line values intact.
+    const cmd = `/usr/bin/env ELECTRON_RUN_AS_NODE=1 '${process.execPath}' -p '"__VT_ENV__" + JSON.stringify(process.env) + "__VT_ENV__"'`;
+    // SIGKILL: an interactive shell ignores the default SIGTERM, so a stuck rc file would outlive the timeout.
+    const r = spawnSync(userShell(), ["-ilc", cmd], { encoding: "utf8", timeout: 8000, killSignal: "SIGKILL", env });
+    const m = /__VT_ENV__(.*)__VT_ENV__/.exec(r.stdout || "");
+    if (m) {
+      const e = JSON.parse(m[1]);
+      login = (e.PATH || "").split(":");
+      for (const k of ["PATH", "PWD", "OLDPWD", "SHLVL", "_", "ELECTRON_RUN_AS_NODE", ...Object.keys(guards)]) delete e[k];
+      Object.assign(process.env, e);
+    }
+  } catch { /* keep the original environment */ }
   const common = [path.join(HOME, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin"].filter((d) => fs.existsSync(d));
   process.env.PATH = [...new Set([...login, ...orig, ...common])].filter(Boolean).join(":");
   binsResolved = false; // PATH changed: re-resolve claude/codex on next use
@@ -172,7 +185,12 @@ function shellArgv(id, { resumeId, sessionId, skipPermissions, settingsFile } = 
       const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
       return { file: WIN_PS, args: ["-NoLogo", "-NoProfile", "-Command", ["&", q(id), ...args.map(q)].join(" ")] };
     }
-    return { file: userShell(), args: ["-ilc", 'exec "$0" "$@"', id, ...args] };
+    // fish has no $0 / "$@": its -c puts the trailing args in $argv (never word-split). Other non-POSIX
+    // shells (tcsh, nu, ...) go through /bin/sh on the merged login PATH from loginPath().
+    const sh = userShell(), base = path.basename(sh);
+    if (base === "fish") return { file: sh, args: ["-ilc", "exec $argv", id, ...args] };
+    if (!["sh", "bash", "zsh", "dash", "ksh"].includes(base)) return { file: "/bin/sh", args: ["-c", 'exec "$0" "$@"', id, ...args] };
+    return { file: sh, args: ["-ilc", 'exec "$0" "$@"', id, ...args] };
   }
   const shells = plainShells();
   const hit = shells.find((s) => s.id === id) || shells.find((s) => s.id === (WIN ? "powershell" : "default"));

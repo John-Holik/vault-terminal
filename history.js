@@ -14,7 +14,7 @@
     return Math.floor(d / 2592000) + "mo ago";
   }
 
-  let histLoaded = false, histSessions = [], histProjectKey = null;
+  let histLoaded = false, histSessions = [], histProjectKey; // undefined = not chosen yet; null = "All projects"
 
   async function histInit() {
     if (histLoaded) return;
@@ -26,7 +26,7 @@
   }
   async function reloadHistory(force) {
     const projects = await A.listProjects();
-    if (histProjectKey === null) histProjectKey = projects[0] ? projects[0].key : null;
+    if (histProjectKey === undefined) histProjectKey = projects[0] ? projects[0].key : null;
     document.getElementById("histproject").innerHTML =
       `<option value="">All projects</option>` +
       projects.map((p) => `<option value="${E(p.key)}"${p.key === histProjectKey ? " selected" : ""}>${E(p.label)} · ${p.count}</option>`).join("");

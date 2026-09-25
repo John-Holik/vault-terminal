@@ -23,6 +23,9 @@
   let SHELLS = [];
   const shellLabel = (id) => (SHELLS.find((s) => s.id === id) || SHELLS[0]).label;
   const shellOpts = (sel) => SHELLS.map((s) => `<option value="${s.id}"${s.id === sel ? " selected" : ""}>${s.label}</option>`).join("");
+  // A shell id not listed on this machine (uninstalled, or saved on the other OS) runs as the platform
+  // shell in main (shells.shellArgv falls back to powershell / default), so label the pane with that shell.
+  const knownShell = (id) => (SHELLS.some((s) => s.id === id) ? id : SHELLS.find((s) => s.id === "powershell" || s.id === "default").id);
 
   // Shared theme table (themes.js, loaded before this script; also used by the popout window).
   // Fallback: a one-theme table so a missing/failed themes.js degrades to indigo, not a crash.
@@ -34,6 +37,11 @@
   const SLOTS = 8;       // max panes a grid can hold (largest layout is 2×4)
   let grids = [];        // [{id, name, layout, broadcast, cells:[cell|null x8]}]
   let activeGrid = null;
+  // False until termInit has rebuilt `grids` from the saved snapshot. Until then every save path is a
+  // no-op, so an F5 / Shift+F5 / quit during boot can't overwrite term-layout.json with an empty layout.
+  let restored = false;
+  // Popout redocks that arrive before termInit's restore loop has finished; drained right after it.
+  let redockQueue = [];
   let gridSeq = 0, cellSeq = 0;
   const byPty = new Map();
   // Popped-out panes' PTYs are NOT in byPty (their own window renders the output), so a
@@ -244,7 +252,7 @@
   async function startCell(grid, idx, cfg) {
     cfg = cfg || {};
     const themeKey = cfg.themeKey || THEME_KEYS[idx % THEME_KEYS.length];
-    const shell = cfg.shell || DEFAULT_SHELL();
+    const shell = knownShell(cfg.shell || DEFAULT_SHELL());
     const cwd = cfg.cwd || DEFAULT_CWD();
     const isClaude = shell === "claude";
     // conversation to resume: explicit resumeId, else a restored convoId; fresh Claude gets a new id.
@@ -339,7 +347,7 @@
   // Re-bind a pane to a PTY that's still alive in the main process (after a renderer reload),
   // instead of spawning a new one. Replays buffered output so the session looks continuous.
   async function reattachCell(grid, idx, saved) {
-    const shell = saved.shell || DEFAULT_SHELL();
+    const shell = knownShell(saved.shell || DEFAULT_SHELL());
     const cwd = saved.cwd || DEFAULT_CWD();
     const cell = {
       id: "c" + ++cellSeq, name: saved.name || defaultName(shell, cwd), shell, cwd,
@@ -403,18 +411,19 @@
     });
   }
   // Dock a single popped pane back in: close its window, which fires popout-redock → dockBackCell.
-  function unpopCell(grid, idx) {
+  async function unpopCell(grid, idx) {
     const c = grid.cells[idx];
     if (!c || !c.popped) return;
-    if (c.ptyId) { A.popoutCloseOne(c.ptyId); return; }
-    // PTY died while popped (onPtyExit cleared ptyId). Close the still-open popout window via
-    // its tracked id — the close fires popout-redock → dockBackCell, which restarts the pane
-    // resumed in this slot. Single path, so the conversation can't be resumed twice.
-    for (const [id, cell] of poppedPtys) { if (cell === c) { A.popoutCloseOne(id); return; } }
-    // No window tracked (edge case — reloads normally reclaim dead placeholders): free the slot.
-    grid.cells[idx] = null;
-    paintCell(grid, idx);
-    persist();
+    // PTY died while popped (onPtyExit cleared ptyId): the tracked map still holds its id.
+    let id = c.ptyId;
+    if (!id) for (const [pid, cell] of poppedPtys) { if (cell === c) { id = pid; break; } }
+    // No id tracked (edge case — reloads normally reclaim dead placeholders): free the slot.
+    if (!id) { grid.cells[idx] = null; paintCell(grid, idx); persist(); return; }
+    if (await A.popoutCloseOne(id)) return; // window found: its close fires popout-redock → dockBackCell
+    // No window (its redock was lost, e.g. it closed while this window was reloading): dock back here.
+    // dockBackCell reattaches the live PTY, or restarts the pane resumed if it died. Skipped if a
+    // redock already replaced the placeholder, so the conversation can't be resumed twice.
+    if (grid.cells[idx] === c) dockBackCell({ ...cellData(c), ptyId: id });
   }
   // Pop one pane out. `bounds` (optional) places the new window — used by drag-to-tear (drop point).
   async function popOutCell(grid, idx, bounds) {
@@ -555,7 +564,9 @@
       fontFamily: "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace",
       fontSize: window.vtSettings.fontSize, cursorBlink: true, allowProposedApi: true, scrollback: 5000,
       rightClickSelectsWord: false, // xterm defaults this on for macOS; it would fight the right-click copy/paste handler below
-      macOptionIsMeta: A.platform === "darwin", // Claude Code's Option+Enter / Option+P shortcuts need Option sent as Meta
+      // Setting (macOS): Option sent as Meta for Claude Code's Option+P / Option+T shortcuts. Off lets non-US
+      // layouts type @ [ ] { } | ~ with Option. Option+Enter sends ESC CR either way.
+      macOptionIsMeta: A.platform === "darwin" && !!window.vtSettings.macOptionIsMeta,
       theme: th.theme,
     });
     const fit = new FitAddon.FitAddon();
@@ -587,12 +598,14 @@
         return true; // Cmd+V: the Edit menu's native paste reaches xterm's textarea as a paste event
       }
       if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return true;
-      if (k === "c") {
+      // keyCode, not e.key: the virtual-key code stays C (67) / V (86) on non-Latin layouts
+      // (Russian, Greek, ...), where e.key is the layout's own letter.
+      if (e.keyCode === 67) {
         e.preventDefault();
         if (term.hasSelection()) A.clipWriteText(term.getSelection());
         return false;
       }
-      if (k === "v") {
+      if (e.keyCode === 86) {
         e.preventDefault(); // stop Chromium's own Ctrl+Shift+V paste-as-plain-text, which would paste twice
         A.clipReadText().then((t) => { if (t) term.paste(t); });
         return false;
@@ -1293,6 +1306,7 @@
   }
   let persistT;
   function persist() {
+    if (!restored) return;
     autoSaveWorkspaces();
     clearTimeout(persistT);
     persistT = setTimeout(async () => {
@@ -1306,10 +1320,13 @@
   // live ptyIds are saved first). Reconciles convoIds like every other save path, so the flushed
   // snapshot carries post-/clear session ids — all callers await the returned promise.
   window.vtFlushLayout = async () => {
+    if (!restored) return; // boot: the saved snapshot on disk is still the latest good one
     clearTimeout(persistT);
     await reconcileConvoIds();
     return A.saveTermLayout(buildSnapshot());
   };
+  // Registered at load (not in termInit) so a popout closed while this window boots is queued, not dropped.
+  if (A.onPopoutRedock) A.onPopoutRedock((cfg) => (redockQueue ? redockQueue.push(cfg) : dockBackCell(cfg)));
 
   async function termInit() {
     SHELLS = await A.listShells();
@@ -1345,7 +1362,6 @@
       const g = grids.find((x) => x.id === c._gid);
       if (g) paintCell(g, c._idx);
     });
-    if (A.onPopoutRedock) A.onPopoutRedock((cfg) => dockBackCell(cfg));
     document.getElementById("gtadd").onclick = () => addGrid();
     document.getElementById("btcast").onclick = toggleBroadcast;
     const popAllBtn = document.getElementById("btpopall");
@@ -1395,6 +1411,7 @@
     } else {
       activeGrid = makeGrid().id;
     }
+    restored = true;
     renderAll();
 
     // Re-attach panes whose PTYs are still alive in the main process (renderer reload, not full relaunch).
@@ -1424,6 +1441,10 @@
       }
       persist();
     } catch { /* ignore */ }
+    // Popouts closed while this window was booting: dock them now that their placeholders are re-tracked.
+    const queued = redockQueue;
+    redockQueue = null;
+    for (const cfg of queued) await dockBackCell(cfg);
 
     renderRail();
     // Keep the resize gutters glued to their gaps as the host changes size (window resize,

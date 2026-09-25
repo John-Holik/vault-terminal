@@ -50,16 +50,20 @@ function sendPty(id, channel, payload) {
    their work. Reopening from the tray shows everything exactly where it was, since the
    renderer was never torn down. A real quit only happens from the tray menu (or when no
    terminals are running). */
+// Popouts hideApp hid. showApp re-shows only these, so a Dock click (macOS activate) never
+// un-minimizes a popout the user minimized (macOS isVisible() is false for a minimized window).
+const hiddenPopouts = new Set();
 function showApp() {
   if (!win || win.isDestroyed()) { createWindow(); return; }
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
-  for (const w of popouts.values()) { if (!w.isDestroyed() && !w.isVisible()) w.show(); }
+  for (const w of hiddenPopouts) { if (!w.isDestroyed()) w.show(); }
+  hiddenPopouts.clear();
 }
 function hideApp() {
   if (win && !win.isDestroyed()) win.hide();
-  for (const w of popouts.values()) { if (!w.isDestroyed()) w.hide(); }
+  for (const w of popouts.values()) { if (!w.isDestroyed()) { w.hide(); hiddenPopouts.add(w); } }
 }
 function createTray() {
   if (tray) return;
@@ -131,7 +135,11 @@ function createWindow() {
     if (process.platform === "darwin") {
       e.preventDefault();
       if (toTray) createTray();
-      win.hide();
+      // Hiding a native-fullscreen window leaves its Space black: leave fullscreen first, hide after.
+      if (win.isFullScreen()) {
+        win.once("leave-full-screen", () => { if (!win.isDestroyed()) win.hide(); });
+        win.setFullScreen(false);
+      } else win.hide();
       return;
     }
     if (!toTray) return;
@@ -145,9 +153,10 @@ function createWindow() {
   bindDevHotkeys(win);
 }
 
-// macOS needs an application menu for Cmd+C/V/Q and window management; elsewhere there is none.
+// macOS needs an application menu for Cmd+C/V/Q/W and window management; elsewhere there is none.
+// fileMenu on macOS is Close Window (Cmd+W): a popout docks back, the main window hides.
 function setAppMenu() {
-  if (process.platform === "darwin") Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "windowMenu" }]));
+  if (process.platform === "darwin") Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: "appMenu" }, { role: "fileMenu" }, { role: "editMenu" }, { role: "windowMenu" }]));
   else Menu.setApplicationMenu(null);
 }
 
@@ -196,10 +205,12 @@ async function quitApp() {
 // flushes its layout, Shift+F5 is a full relaunch (picks up main.js/preload.js changes), F12 devtools.
 function bindDevHotkeys(w) {
   w.webContents.on("before-input-event", (e, input) => {
-    if (input.type !== "keyDown") return;
-    if (input.key === "F5" && input.shift) { e.preventDefault(); relaunchApp(); }
-    else if (input.key === "F5") { e.preventDefault(); w.webContents.send("hotkey-reload"); }
-    else if (input.key === "F12") { e.preventDefault(); w.webContents.toggleDevTools(); }
+    if (input.type !== "keyDown" || (input.key !== "F5" && input.key !== "F12")) return;
+    e.preventDefault();
+    if (input.isAutoRepeat) return; // a held key acts once (held F5 would reload into a booting page)
+    if (input.key === "F5" && input.shift) relaunchApp();
+    else if (input.key === "F5") w.webContents.send("hotkey-reload");
+    else w.webContents.toggleDevTools();
   });
 }
 
@@ -220,10 +231,11 @@ function spawnPty({ shell, cwd, cols, rows, resumeId, sessionId, paneKey }) {
   const cfg = settings.get();
   // A resume id from another machine (or a deleted session) won't exist locally and
   // `claude --resume` aborts with "No conversation found". Fall back to a fresh session
-  // so the pane still opens; the SessionStart hook reports the new id back to the renderer.
+  // so the pane still opens. The fresh session reuses the requested id: no local transcript has it,
+  // so --session-id can't collide, and the renderer's convoId stays correct even with hooks off.
   if (shell === "claude" && resumeId && !sessions.claudeSessionExists(resumeId)) {
+    if (!sessionId) sessionId = resumeId;
     resumeId = null;
-    if (!sessionId) sessionId = crypto.randomUUID();
   }
   // Claude panes get the app's pane hooks via --settings (hooks.js); Claude merges them with the user's own.
   const settingsFile = shell === "claude" && cfg.claudeHooks ? hooks.settingsArg() : null;
@@ -359,8 +371,9 @@ function registerIpc() {
   });
   // dock every open popout back into the grid at once (inverse of "pop out all")
   ipcMain.on("popout-close-all", () => { for (const w of [...popouts.values()]) { if (!w.isDestroyed()) w.close(); } });
-  // dock a single popout back in (the "unpop" button on a reserved grid slot)
-  ipcMain.on("popout-close-one", (e, ptyId) => { const w = popouts.get(ptyId); if (w && !w.isDestroyed()) w.close(); });
+  // dock a single popout back in (the "unpop" button on a reserved grid slot); false = no window
+  // for this PTY, so the renderer docks it back itself
+  ipcMain.handle("popout-close-one", (e, ptyId) => { const w = popouts.get(ptyId); if (w && !w.isDestroyed()) { w.close(); return true; } return false; });
   // rename / recolor a popout: update its live cfg so the change carries back on dock
   ipcMain.on("popout-rename", (e, { ptyId, name }) => {
     const cfg = popoutCfg.get(ptyId);

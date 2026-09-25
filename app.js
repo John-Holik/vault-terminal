@@ -80,6 +80,7 @@
     $("s-hooks").checked = !!s.claudeHooks;
     $("s-font").value = s.fontSize;
     $("s-tray").checked = !!s.closeToTray;
+    $("s-optmeta").checked = !!s.macOptionIsMeta;
     renderHooks(hs);
     modal.hidden = false;
     $("s-close").focus();
@@ -107,6 +108,8 @@
     };
     $("s-skip").onchange = (e) => save({ claudeSkipPermissions: e.target.checked });
     $("s-tray").onchange = (e) => save({ closeToTray: e.target.checked });
+    $("s-optmeta-row").style.display = A.platform === "darwin" ? "" : "none"; // macOS-only option
+    $("s-optmeta").onchange = (e) => save({ macOptionIsMeta: e.target.checked });
     $("s-font").onchange = (e) => {
       const v = parseFloat(e.target.value);
       if (v >= 8 && v <= 32) save({ fontSize: v });

@@ -76,7 +76,8 @@
         "NSDesktopFolderUsageDescription": "Commands you run in Vault Terminal may read or write files on your Desktop.",
         "NSDownloadsFolderUsageDescription": "Commands you run in Vault Terminal may read or write files in your Downloads folder.",
         "NSRemovableVolumesUsageDescription": "Commands you run in Vault Terminal may access files on removable drives.",
-        "NSNetworkVolumesUsageDescription": "Commands you run in Vault Terminal may access files on network volumes."
+        "NSNetworkVolumesUsageDescription": "Commands you run in Vault Terminal may access files on network volumes.",
+        "NSAppleEventsUsageDescription": "Commands you run in Vault Terminal may control other apps with AppleScript."
       },
       "artifactName": "${name}-${version}-mac-${arch}.${ext}"
     }

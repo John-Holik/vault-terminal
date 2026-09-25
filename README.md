@@ -41,7 +41,7 @@ The app is ad-hoc signed but not notarized (there is no Apple Developer ID), so 
   xattr -dr com.apple.quarantine "/Applications/Vault Terminal.app"
   ```
 
-**Permissions:** macOS asks for Local Network access the first time a command inside the app (ssh, curl to a LAN host, a dev server) touches the local network, and for folder access when a command reads Documents, Desktop or Downloads. Because the app is ad-hoc signed, macOS treats each new version as a new app and asks again after updates. These can be changed in System Settings > Privacy & Security > Local Network / Files and Folders.
+**Permissions:** macOS asks for Local Network access the first time a command inside the app (ssh, curl to a LAN host, a dev server) touches the local network, for folder access when a command reads Documents, Desktop or Downloads, and for Automation the first time a command controls another app (osascript, AppleScript). Because the app is ad-hoc signed, macOS treats each new version as a new app and asks again after updates. These can be changed in System Settings > Privacy & Security > Local Network / Files and Folders / Automation.
 
 ## Shells
 
@@ -75,6 +75,9 @@ The hooks run on the app's own bundled runtime, so they do not need Node.js inst
 | Right-click | Copy the selection, or paste if nothing is selected |
 | Cmd+C / Cmd+V | Copy / paste (macOS) |
 | Ctrl+Shift+C / Ctrl+Shift+V | Copy / paste (Windows) |
+| Cmd+W | Close the window (macOS); a popped-out pane docks back |
+
+On macOS, Option acts as Meta so Claude's Option+P / Option+T shortcuts work. If your keyboard layout types characters like @, [ or ~ with Option, turn off **Option key sends Meta** in Settings.
 
 ## Data
 

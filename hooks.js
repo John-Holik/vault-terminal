@@ -156,9 +156,11 @@ function ensure() {
   }
 }
 
-// Remove the hooks folder. Nothing outside userData was ever written.
+// Remove claude-hooks.json so new panes stop getting --settings (status().installed goes false).
+// The scripts stay: Claude panes already running loaded their hooks at startup and still call them.
+// Nothing outside userData was ever written.
 function uninstall() {
-  try { fs.rmSync(hooksDir(), { recursive: true, force: true }); } catch { /* ignore */ }
+  try { fs.rmSync(settingsFile(), { force: true }); } catch { /* ignore */ }
   return status();
 }
 

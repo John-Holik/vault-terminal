@@ -5,16 +5,17 @@ const os = require("os");
 const { app } = require("electron");
 
 // CLAUDE_CONFIG_DIR relocates ~/.claude (settings + transcripts); honor it like Claude Code does.
-const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
-const PROJECTS = path.join(CLAUDE_DIR, "projects");
+// Resolved on each use, not at require time: on macOS it may only arrive with the login-shell env (shells.loginPath).
+const projectsDir = () => path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "projects");
 
 // True if a Claude conversation with this id exists in ~/.claude/projects on THIS
 // machine. Sessions are stored per-project as <id>.jsonl, so scan the project dirs.
 function claudeSessionExists(id) {
   if (!id) return false;
   try {
-    for (const e of fs.readdirSync(PROJECTS, { withFileTypes: true })) {
-      if (e.isDirectory() && fs.existsSync(path.join(PROJECTS, e.name, id + ".jsonl"))) return true;
+    const projects = projectsDir();
+    for (const e of fs.readdirSync(projects, { withFileTypes: true })) {
+      if (e.isDirectory() && fs.existsSync(path.join(projects, e.name, id + ".jsonl"))) return true;
     }
   } catch { /* ignore */ }
   return false;
@@ -70,11 +71,12 @@ function parseSessionFile(full) {
 function scanSessions() {
   const projects = [];
   const sessions = [];
-  if (!fs.existsSync(PROJECTS)) return { projects, sessions };
+  const root = projectsDir();
+  if (!fs.existsSync(root)) return { projects, sessions };
   const seen = new Set();
-  for (const e of fs.readdirSync(PROJECTS, { withFileTypes: true })) {
+  for (const e of fs.readdirSync(root, { withFileTypes: true })) {
     if (!e.isDirectory()) continue;
-    const dir = path.join(PROJECTS, e.name);
+    const dir = path.join(root, e.name);
     let files;
     try { files = fs.readdirSync(dir).filter((f) => f.endsWith(".jsonl")); } catch { continue; }
     if (!files.length) continue;
@@ -165,4 +167,4 @@ function readPaneEvents() {
   return out;
 }
 
-module.exports = { PROJECTS, claudeSessionExists, paneSessionsDir, readPaneSessions, readPaneAttention, readPaneEvents, getSessions };
+module.exports = { projectsDir, claudeSessionExists, paneSessionsDir, readPaneSessions, readPaneAttention, readPaneEvents, getSessions };

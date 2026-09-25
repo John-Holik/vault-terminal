@@ -41,7 +41,7 @@ contextBridge.exposeInMainWorld("api", {
   popoutOpen: (cfg) => ipcRenderer.invoke("popout-open", cfg),
   popoutOpenAll: (payload) => ipcRenderer.invoke("popout-open-all", payload),
   popoutCloseAll: () => ipcRenderer.send("popout-close-all"),
-  popoutCloseOne: (ptyId) => ipcRenderer.send("popout-close-one", ptyId),
+  popoutCloseOne: (ptyId) => ipcRenderer.invoke("popout-close-one", ptyId), // resolves false when no window exists
   popoutRename: (p) => ipcRenderer.send("popout-rename", p),
   popoutSetTheme: (p) => ipcRenderer.send("popout-set-theme", p),
   broadcastNeon: (on) => ipcRenderer.send("popout-neon", on),
