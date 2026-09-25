@@ -440,7 +440,7 @@ function registerIpc() {
 /* ---- smoke test (VT_SMOKE=1, driven by smoke.js) ----
    Prints one JSON line per step and always exits: 0 all ok, 1 a step failed, 2 threw, 3 timed out. */
 async function smokeMain() {
-  setTimeout(() => app.exit(3), 55000).unref();
+  setTimeout(() => app.exit(3), 110000).unref();
   const log = (o) => console.log(JSON.stringify(o));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const waitFor = async (fn, ms) => {
@@ -457,11 +457,12 @@ async function smokeMain() {
     const shellId = process.platform === "win32" ? "powershell" : "default";
     const id = spawnPty({ shell: shellId, cols: 120, rows: 30 });
     const out = () => ptyBuf.get(id) || "";
-    await waitFor(() => out().length > 0, 10000); // shell has drawn its first output
+    // A cold CI runner can take >10 s to start Windows PowerShell, so the waits are generous.
+    await waitFor(() => out().length > 0, 20000); // shell has drawn its first output
     await sleep(500);
     // The empty quotes keep the echoed keystrokes from matching; only the command's output reads VT_SMOKE_OK.
     if (ptys.has(id)) ptys.get(id).write('echo VT_SMOKE_""OK\r');
-    const ptyOk = await waitFor(() => out().includes("VT_SMOKE_OK"), 10000);
+    const ptyOk = await waitFor(() => out().includes("VT_SMOKE_OK"), 30000);
     log({ step: "pty", ok: ptyOk, shell: shellId, ...(ptyOk ? {} : { tail: out().slice(-500) }) });
     if (ptys.has(id)) ptys.get(id).kill();
 
