@@ -52,7 +52,7 @@ jobs:
       - name: Packaged app can spawn a PTY
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
-            APP=$(ls -d dist/mac*/*.app | head -1); EXE="$APP/Contents/MacOS/Vault Terminal"; RES="$APP/Contents/Resources"
+            APP=$(ls -d dist/mac*/*.app | head -1); EXE="$APP/Contents/MacOS/Vault Terminal"; RES="$(cd "$APP/Contents/Resources" && pwd)"
           else
             EXE="dist/win-unpacked/Vault Terminal.exe"; RES="$(cd dist/win-unpacked/resources && pwd -W)"
           fi
