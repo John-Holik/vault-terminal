@@ -3,9 +3,9 @@
   const A = window.api;
   const E = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   // Resolved by settings.js in main (never null): the configured folder, else the home dir.
-  const DEFAULT_CWD = A.settings.defaultCwd;
+  const DEFAULT_CWD = () => A.settings.defaultCwd; // read live: app.js patches A.settings when the modal saves
   // Resolved by settings.js in main (never null): the configured shell id, else shells.defaultShellId().
-  const DEFAULT_SHELL = A.settings.defaultShell;
+  const DEFAULT_SHELL = () => A.settings.defaultShell;
   const IS_MAC = A.platform === "darwin";
 
   const baseName = (p) => (p || "").replace(/[\\/]+$/, "").split(/[\\/]/).pop() || (p || "");
@@ -244,8 +244,8 @@
   async function startCell(grid, idx, cfg) {
     cfg = cfg || {};
     const themeKey = cfg.themeKey || THEME_KEYS[idx % THEME_KEYS.length];
-    const shell = cfg.shell || DEFAULT_SHELL;
-    const cwd = cfg.cwd || DEFAULT_CWD;
+    const shell = cfg.shell || DEFAULT_SHELL();
+    const cwd = cfg.cwd || DEFAULT_CWD();
     const isClaude = shell === "claude";
     // conversation to resume: explicit resumeId, else a restored convoId; fresh Claude gets a new id.
     const priorConvo = cfg.resumeId || cfg.convoId || null;
@@ -339,8 +339,8 @@
   // Re-bind a pane to a PTY that's still alive in the main process (after a renderer reload),
   // instead of spawning a new one. Replays buffered output so the session looks continuous.
   async function reattachCell(grid, idx, saved) {
-    const shell = saved.shell || DEFAULT_SHELL;
-    const cwd = saved.cwd || DEFAULT_CWD;
+    const shell = saved.shell || DEFAULT_SHELL();
+    const cwd = saved.cwd || DEFAULT_CWD();
     const cell = {
       id: "c" + ++cellSeq, name: saved.name || defaultName(shell, cwd), shell, cwd,
       themeKey: saved.themeKey || THEME_KEYS[idx % THEME_KEYS.length], paneKey: saved.paneKey || uuid(),
@@ -660,8 +660,8 @@
 
   /* ---- rendering ---- */
   function emptyStateHtml(cell) {
-    const sel = (cell && cell.shell) || DEFAULT_SHELL;
-    const cwd = (cell && cell.cwd) || DEFAULT_CWD;
+    const sel = (cell && cell.shell) || DEFAULT_SHELL();
+    const cwd = (cell && cell.cwd) || DEFAULT_CWD();
     return `<div class="estate">
       <div class="elabel">${cell ? E(cell.name || "New terminal") : "New terminal"}</div>
       <div class="erow"><select class="eshell">${shellOpts(sel)}</select><button class="efolder" title="Choose folder">📁</button><button class="estart">Start</button></div>
@@ -673,11 +673,11 @@
     const sel = body.querySelector(".eshell");
     const key = grid.id + ":" + idx;
     body.querySelector(".efolder").onclick = async () => {
-      const dir = await A.pickFolder(pendingCwd.get(key) || (prev && prev.cwd) || DEFAULT_CWD);
+      const dir = await A.pickFolder(pendingCwd.get(key) || (prev && prev.cwd) || DEFAULT_CWD());
       if (dir) { pendingCwd.set(key, dir); const lbl = body.querySelector(".ecwd"); if (lbl) { lbl.textContent = baseName(dir); lbl.title = dir; } }
     };
     body.querySelector(".estart").onclick = () => {
-      const cwd = pendingCwd.get(key) || (prev && prev.cwd) || DEFAULT_CWD;
+      const cwd = pendingCwd.get(key) || (prev && prev.cwd) || DEFAULT_CWD();
       pendingCwd.delete(key);
       startCell(grid, idx, { shell: sel.value, cwd, name: prev ? prev.name : null, themeKey: prev ? prev.themeKey : null, convoId: prev ? prev.convoId : null, paneKey: prev ? prev.paneKey : null });
     };
@@ -1456,7 +1456,7 @@
     // Grid full: open a new workspace instead of overwriting slot 0 (which would orphan
     // that pane's live PTY and leave its xterm streaming into a detached DOM node).
     if (idx < 0) { g = makeGrid(); activeGrid = g.id; renderAll(); idx = 0; }
-    startCell(g, idx, { shell: "claude", cwd: cwd || DEFAULT_CWD, name: (title || "").slice(0, 44), resumeId: id });
+    startCell(g, idx, { shell: "claude", cwd: cwd || DEFAULT_CWD(), name: (title || "").slice(0, 44), resumeId: id });
   }
 
   window.fitActiveGrid = fitActiveGrid;

@@ -55,6 +55,8 @@
 
   /* ---- settings modal ---- */
   const modal = $("settings");
+  // Patch the boot snapshot too, so terminal.js picks the new defaults up for the next pane without a reload.
+  const save = (patch) => { Object.assign(A.settings, patch); return A.setSettings(patch); };
 
   function renderHooks(st) {
     const el = $("s-hooks-status");
@@ -92,25 +94,25 @@
       if (e.key === "Escape" && !modal.hidden) { e.preventDefault(); e.stopPropagation(); closeSettings(); }
     }, true);
 
-    $("s-shell").onchange = (e) => A.setSettings({ defaultShell: e.target.value });
+    $("s-shell").onchange = (e) => save({ defaultShell: e.target.value });
     $("s-cwd-pick").onclick = async () => {
       const dir = await A.pickFolder($("s-cwd").value);
       if (!dir) return;
       $("s-cwd").value = dir;
       $("s-cwd").title = dir;
-      A.setSettings({ defaultCwd: dir });
+      save({ defaultCwd: dir });
     };
-    $("s-skip").onchange = (e) => A.setSettings({ claudeSkipPermissions: e.target.checked });
-    $("s-tray").onchange = (e) => A.setSettings({ closeToTray: e.target.checked });
+    $("s-skip").onchange = (e) => save({ claudeSkipPermissions: e.target.checked });
+    $("s-tray").onchange = (e) => save({ closeToTray: e.target.checked });
     $("s-font").onchange = (e) => {
       const v = parseFloat(e.target.value);
-      if (v >= 8 && v <= 32) A.setSettings({ fontSize: v });
+      if (v >= 8 && v <= 32) save({ fontSize: v });
     };
     $("s-hooks").onchange = async (e) => {
       const box = e.target;
       const on = box.checked;
       box.disabled = true;
-      await A.setSettings({ claudeHooks: on });
+      await save({ claudeHooks: on });
       renderHooks(on ? await A.hooksInstall() : await A.hooksUninstall());
       box.disabled = false;
     };
