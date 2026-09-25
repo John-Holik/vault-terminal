@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'" />
+    <title>Vault Terminal</title>
+    <link rel="stylesheet" href="node_modules/@fontsource/jetbrains-mono/400.css" />
+    <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <!-- Boot overlay: inline here (head + first body child) so it paints before styles.css/JS load.
+         app.js fades then removes it once termInit() settles. -->
+    <style>
+      #bootscreen { position: fixed; inset: 0; z-index: 9999; background: #0E0E11;
+        display: flex; align-items: center; justify-content: center; transition: opacity .3s ease; }
+      #bootscreen.hide { opacity: 0; }
+      #bootscreen .boot-inner { position: relative; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+      #bootscreen .boot-logo { border-radius: 12px; animation: boot-pulse 2.4s ease-in-out infinite; }
+      #bootscreen .boot-name { font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 15px; font-weight: 600;
+        letter-spacing: .02em; color: #EDEDEF; }
+      #bootscreen .boot-spin { width: 22px; height: 22px; border-radius: 50%;
+        border: 2px solid rgba(255,255,255,.11); border-top-color: #8B95F0;
+        box-shadow: 0 0 14px -4px rgba(110,121,230,.7); animation: boot-spin .7s linear infinite; }
+      @keyframes boot-spin { to { transform: rotate(360deg); } }
+      @keyframes boot-pulse { 0%, 100% { box-shadow: 0 0 26px -8px rgba(110,121,230,.5); }
+        50% { box-shadow: 0 0 40px -4px rgba(110,121,230,.7); } }
+    </style>
+  </head>
+  <body>
+    <div id="bootscreen">
+      <div class="boot-inner">
+        <img class="boot-logo" src="assets/logo.png" alt="" width="52" height="52" />
+        <div class="boot-name">Vault Terminal</div>
+        <div class="boot-spin"></div>
+      </div>
+    </div>
+
+    <header class="top">
+      <img class="logo" src="assets/logo.png" alt="" width="20" height="20" draggable="false" />
+      <div class="seg" role="tablist" aria-label="Main sections">
+        <button class="tab on" data-tab="terminal" role="tab" aria-selected="true" aria-controls="terminal">Terminal</button>
+        <button class="tab" data-tab="history" role="tab" aria-selected="false" aria-controls="history">History</button>
+      </div>
+      <div id="termstatus" class="termstatus" title="Live terminal status, click a terminal to jump to it"></div>
+      <div class="devbtns">
+        <button id="btsettings" class="btn sm" title="Settings">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button id="reloadui" class="btn sm" title="Reload UI (F5), keeps terminals running">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </button>
+        <button id="restartapp" class="btn sm" title="Restart app (Shift+F5), full relaunch">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="panels">
+      <section id="terminal" class="panel on">
+        <div class="termtop">
+          <div class="gridtabs" id="gridtabs"></div>
+          <button class="gtadd" id="gtadd" title="New 2×2 workspace">＋</button>
+          <div class="termtools">
+            <button class="ttoggle" id="btcast" title="Broadcast typing to every pane in this workspace">⌁ Broadcast</button>
+            <button class="ttoggle" id="btneon" title="Neon glow border on running panes (per theme color)">◉ Neon</button>
+            <button class="ttoggle" id="btsave" title="Save layout + current session IDs now (restored on next launch)"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"/></svg></button>
+            <button class="ttoggle on" id="btautows" title="Auto-save workspace: when a saved workspace is loaded, automatically write your edits (colors, names, layout, panes) back to it.">🔁 Auto-save layout</button>
+            <button class="ttoggle on" id="btmute" title="Toggle the agent-done chime">🔔</button>
+            <button class="ttoggle" id="btpopall" title="Pop every pane out into its own window, tiled to match this layout">⧉ Pop all</button>
+            <button class="ttoggle" id="btunpopall" title="Dock every popped-out terminal back into this workspace">⧈ Unpop all</button>
+            <div class="layoutseg" id="layoutseg"></div>
+          </div>
+        </div>
+        <div class="termbody">
+          <aside class="termrail" id="termrail"></aside>
+          <div class="gridhost" id="gridhost"></div>
+        </div>
+      </section>
+
+      <section id="history" class="panel">
+        <div class="histtop">
+          <select id="histproject" class="histsel"></select>
+          <input id="histsearch" class="hsearch" placeholder="search sessions…" />
+          <span class="histcount" id="histcount"></span>
+          <button id="histrefresh" class="btn sm">Rescan</button>
+        </div>
+        <div class="histlist" id="histlist"></div>
+      </section>
+    </div>
+
+    <div id="settings" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="s-title">
+        <div class="modal-head">
+          <span id="s-title">Settings</span>
+          <button id="s-close" class="iconbtn" title="Close" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <label class="field">
+            <span class="flabel">Default shell</span>
+            <select id="s-shell" class="finput"></select>
+          </label>
+          <div class="field">
+            <span class="flabel">Default folder</span>
+            <div class="frow">
+              <input id="s-cwd" class="finput" readonly />
+              <button id="s-cwd-pick" class="btn sm">Browse…</button>
+            </div>
+          </div>
+          <label class="field">
+            <span class="flabel">Font size</span>
+            <input id="s-font" class="finput num" type="number" min="8" max="32" step="0.5" />
+            <span class="fnote">Applies to new panes / after reload</span>
+          </label>
+          <div class="fsep"></div>
+          <label class="fcheck">
+            <input type="checkbox" id="s-skip" />
+            <span><b>Skip Claude permission prompts</b><small>Launch Claude panes with --dangerously-skip-permissions.</small></span>
+          </label>
+          <label class="fcheck">
+            <input type="checkbox" id="s-hooks" />
+            <span><b>Claude status hooks</b><small>Lets panes resume the right session and show when Claude is waiting on you. Writes three scripts to ~/.claude/hooks and entries in ~/.claude/settings.json.</small></span>
+          </label>
+          <div id="s-hooks-status" class="fstatus"></div>
+          <label class="fcheck">
+            <input type="checkbox" id="s-tray" />
+            <span><b>Keep running in the tray on close</b><small>Closing the window hides it while terminals are running.</small></span>
+          </label>
+        </div>
+        <div class="modal-foot">Default shell and folder take effect after a reload (F5).</div>
+      </div>
+    </div>
+
+    <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+    <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+    <script src="themes.js"></script>
+    <script src="terminal.js"></script>
+    <script src="history.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
