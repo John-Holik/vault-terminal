@@ -43,6 +43,9 @@ body.plat-win32 .top { flex-basis: 40px; height: 40px; padding-right: calc(100% 
 .devbtns { margin-left: auto; display: flex; gap: 6px; flex: 0 0 auto; }
 .devbtns .btn.sm { display: inline-flex; align-items: center; justify-content: center; padding: 5px 7px; line-height: 1; color: var(--mut); background: transparent; border-color: transparent; }
 .devbtns .btn.sm:hover { color: var(--tx); background: var(--surf2); border-color: var(--bd2); }
+.devbtns .btn.update { color: var(--ok); border-color: rgba(63,185,80,.45); background: rgba(63,185,80,.10); padding: 5px 10px; font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.devbtns .btn.update:hover { color: var(--tx); background: rgba(63,185,80,.2); }
+.modal-updates { border-top: 1px solid var(--bd); }
 
 /* live terminal status strip: chips grouped by workspace (tab); each group collapses to
    just its panes' status dots when more than one workspace has terminals open. */

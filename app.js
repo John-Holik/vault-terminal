@@ -85,6 +85,8 @@
     $("s-tray").checked = !!s.closeToTray;
     $("s-optmeta").checked = !!s.macOptionIsMeta;
     renderHooks(hs);
+    $("s-autoupdate").checked = !!s.checkUpdates;
+    renderUpdate(await A.updateState());
     modal.hidden = false;
     $("s-close").focus();
   }
@@ -129,6 +131,46 @@
     $("s-gitbranch").onchange = (e) => refreshClaudeFiles(e.target, { statusLineGitBranch: e.target.checked });
   }
 
+  /* ---- in-app updates ---- */
+  // Header pill (#btupdate) appears once a newer release is known; the Settings block mirrors it.
+  const isMac = A.platform === "darwin";
+  function updateLabel(u) {
+    if (u.state === "available") return "Update v" + u.version;
+    if (u.state === "downloading") return "Downloading " + (u.progress || 0) + "%";
+    if (u.state === "downloaded") return isMac ? "Open installer" : "Restart to update";
+    return "";
+  }
+  function renderUpdate(u) {
+    if (!u) return;
+    const pill = $("btupdate");
+    const label = updateLabel(u);
+    pill.hidden = !label;
+    pill.textContent = label;
+    pill.disabled = u.state === "downloading";
+    pill.title = u.state === "downloaded" && !isMac ? "Panes and Claude sessions resume after the restart" : "Vault Terminal " + u.current + " installed";
+    const ver = $("s-version"); if (ver) ver.textContent = "Vault Terminal " + u.current;
+    const st = $("s-update-status");
+    if (st) {
+      const text = { idle: "", checking: "Checking…", none: "Up to date", available: "Version " + u.version + " is available", downloading: "Downloading " + (u.progress || 0) + "%", downloaded: isMac ? "Downloaded to your Downloads folder. Open it, drag Vault Terminal to Applications, then allow it once in Privacy & Security." : "Downloaded. Restart to update; panes resume afterwards.", opened: "Installer opened.", error: "Update check failed: " + (u.error || "") }[u.state] || "";
+      st.className = "fstatus " + (u.state === "error" ? "warn" : u.state === "none" || u.state === "downloaded" ? "ok" : "");
+      st.textContent = text;
+    }
+    const act = $("s-update-act");
+    if (act) { act.hidden = !label; act.textContent = label; act.disabled = u.state === "downloading"; }
+  }
+  async function updateAction() {
+    const u = await A.updateState();
+    if (u.state === "available") A.updateDownload();
+    else if (u.state === "downloaded") A.updateInstall();
+  }
+  function setupUpdates() {
+    $("btupdate").onclick = updateAction;
+    $("s-update-act").onclick = updateAction;
+    $("s-update-check").onclick = async () => { $("s-update-check").disabled = true; renderUpdate(await A.updateCheck()); $("s-update-check").disabled = false; };
+    $("s-autoupdate").onchange = (e) => save({ checkUpdates: e.target.checked });
+    A.onUpdateState(renderUpdate);
+  }
+
   /* ---- boot overlay ---- */
   let bootHidden = false;
   function hideBoot() {
@@ -144,6 +186,7 @@
     setupTabs();
     setupReload();
     setupSettings();
+    setupUpdates();
     try { await document.fonts.load("12px 'JetBrains Mono'"); } catch { /* ignore */ }
     await window.termInit();
     hideBoot();

@@ -42,6 +42,7 @@
       </div>
       <div id="termstatus" class="termstatus" title="Live terminal status, click a terminal to jump to it"></div>
       <div class="devbtns">
+        <button id="btupdate" class="btn sm update" hidden></button>
         <button id="btsettings" class="btn sm" title="Settings">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
@@ -137,6 +138,17 @@
           <label class="fcheck" id="s-optmeta-row">
             <input type="checkbox" id="s-optmeta" />
             <span><b>Option key sends Meta</b><small>Needed for Claude's Option+P / Option+T shortcuts. Turn off if your keyboard layout types @ [ ] { } | ~ with Option.</small></span>
+          </label>
+        </div>
+        <div class="modal-body modal-updates">
+          <div class="field">
+            <span class="flabel">Updates</span>
+            <div class="frow"><span id="s-version" class="fnote"></span><button id="s-update-check" class="btn sm">Check for updates</button><button id="s-update-act" class="btn sm" hidden></button></div>
+            <div id="s-update-status" class="fstatus"></div>
+          </div>
+          <label class="fcheck">
+            <input type="checkbox" id="s-autoupdate" />
+            <span><b>Check for updates automatically</b><small>15 seconds after launch and every 6 hours. Nothing downloads until you click.</small></span>
           </label>
         </div>
         <div class="modal-foot">Changes apply to panes you start from now on.</div>

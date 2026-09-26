@@ -81,6 +81,13 @@ The hooks run on the app's own bundled runtime, so they do not need Node.js inst
 
 On macOS, Option acts as Meta so Claude's Option+P / Option+T shortcuts work. If your keyboard layout types characters like @, [ or ~ with Option, turn off **Option key sends Meta** in Settings.
 
+## Updates
+
+The app checks GitHub Releases 15 seconds after launch and every 6 hours (turn this off in Settings, or check manually there). Nothing downloads until you click the **Update** pill in the header.
+
+- **Windows:** the new installer downloads in the background; **Restart to update** installs it and relaunches the app. Your layout and Claude sessions come back after the restart.
+- **macOS:** the app cannot replace itself because it is not Developer-ID signed, so it downloads the matching dmg to your Downloads folder and opens it. Drag Vault Terminal to Applications, then allow it once more in Privacy & Security.
+
 ## Data
 
 Settings, the working layout, saved layouts and pane-session files are stored in the app's user-data folder:

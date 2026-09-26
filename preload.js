@@ -78,4 +78,11 @@ contextBridge.exposeInMainWorld("api", {
   restartApp: () => ipcRenderer.invoke("restart-app"),
   onHotkeyReload: (cb) => ipcRenderer.on("hotkey-reload", (e, m) => cb(m)),
   toggleDevTools: () => ipcRenderer.send("toggle-devtools"),
+
+  // in-app updates
+  updateState: () => ipcRenderer.invoke("update-state-get"),
+  updateCheck: () => ipcRenderer.invoke("update-check"),
+  updateDownload: () => ipcRenderer.invoke("update-download"),
+  updateInstall: () => ipcRenderer.invoke("update-install"),
+  onUpdateState: (cb) => ipcRenderer.on("update-state", (e, m) => cb(m)),
 });

@@ -77,6 +77,8 @@ jobs:
             dist/*.exe
             dist/*.dmg
             dist/*.zip
+            dist/*.blockmap
+            dist/latest.yml
           if-no-files-found: error
   # One release job after all builds finish, so the three build jobs don't race to create
   # the same GitHub release. Only it gets contents: write.

@@ -15,6 +15,7 @@ const DEFAULTS = {
   fontSize: 12.5,              // xterm fontSize (renderer reads it)
   closeToTray: true,           // window close hides to tray while PTYs are alive
   macOptionIsMeta: true,       // macOS: Option sends Meta (Claude's Option+P/T); off to type @ [ ] { } | ~ on non-US layouts
+  checkUpdates: true,          // look for a newer GitHub release 15 s after launch and every 6 h (never downloads by itself)
 };
 
 function settingsFile() { return path.join(app.getPath("userData"), "settings.json"); }

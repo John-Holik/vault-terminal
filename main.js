@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const pty = require("@lydell/node-pty");
 const shells = require("./shells");
 const hooks = require("./hooks");
+const updater = require("./updater");
 const sessions = require("./sessions");
 const settings = require("./settings");
 const layouts = require("./layouts");
@@ -449,6 +450,12 @@ function registerIpc() {
 
   // app install dir
   ipcMain.handle("app-dir", () => app.getAppPath());
+
+  // in-app updates (updater.js): check / download / install, state pushed as "update-state"
+  ipcMain.handle("update-state-get", () => updater.getState());
+  ipcMain.handle("update-check", () => updater.check());
+  ipcMain.handle("update-download", () => updater.download());
+  ipcMain.handle("update-install", () => updater.install());
 }
 
 /* ---- smoke test (VT_SMOKE=1, driven by smoke.js) ----
@@ -514,6 +521,23 @@ async function smokeMain() {
     }
     log({ step: "statusline", ok: slOk, ...(slOk ? {} : { out: slOut.slice(0, 400) }) });
 
+    // 2d. updater (only with VT_UPDATE_FEED, the local end-to-end test): check must find the feed's
+    // version, download must complete. Never runs in CI.
+    let updOk = true;
+    if (process.env.VT_UPDATE_FEED) {
+      updOk = false;
+      const seen = [];
+      updater.init({ send: (ch, s) => seen.push(s.state + (s.progress ? ":" + s.progress : "")), enabled: false });
+      const a = await updater.check();
+      let st = a;
+      if (a.state === "available") {
+        await updater.download();
+        st = await waitFor(() => ["downloaded", "error"].includes(updater.getState().state), 120000) ? updater.getState() : updater.getState();
+      }
+      updOk = st.state === "downloaded";
+      log({ step: "updater", ok: updOk, version: st.version, state: st.state, error: st.error, trail: seen.slice(-6) });
+    }
+
     // 3. renderer: load the real UI hidden, collect console errors, check the grid rendered
     registerIpc();
     const errors = [];
@@ -543,7 +567,7 @@ async function smokeMain() {
     log({ step: "renderer", ok: rendererOk, errors });
 
     // 4. done
-    const ok = ptyOk && hooksOk && slOk && rendererOk;
+    const ok = ptyOk && hooksOk && slOk && updOk && rendererOk;
     log({ step: "done", ok });
     killAllPtys();
     app.exit(ok ? 0 : 1);
@@ -566,6 +590,9 @@ if (SMOKE) {
     shells.loginPath();
     // Keep the Claude pane hooks current (idempotent) before any Claude pane spawns.
     hooks.ensure(); // writes or removes claude-hooks.json per the hooks / status line settings
+    // Update checks: broadcast state to every window; before a Windows install, flush the layout so
+    // panes and their Claude sessions come back after the installer relaunches the app.
+    updater.init({ send: sendAll, enabled: !!settings.get().checkUpdates, beforeInstall: async () => { isQuitting = true; await flushWindowLayout(win); } });
     if (process.platform === "win32") app.setAppUserModelId("com.johnholik.vaultterminal");
     setAppMenu();
     registerIpc();
