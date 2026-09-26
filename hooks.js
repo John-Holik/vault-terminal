@@ -98,29 +98,59 @@ const SCRIPTS = [
   { file: "vt-hook-event.js", src: EVENT_SRC },
 ];
 
-// One settings entry that runs <file> under this app's binary as Node. Windows forces the
-// PowerShell shell form (Claude picks Git Bash or PowerShell there, and the command differs);
-// macOS/Linux use the plain `sh -c` form. Both were verified to deliver the hook's stdin.
+// The app's status line (statusline.js at the repo root) is copied next to the hook scripts.
+const STATUSLINE_FILE = "vt-statusline.js";
+const STATUSLINE_LAUNCHER = "vt-statusline.cmd"; // Windows only, see statusLineEntry
+const settings = require("./settings");
+
+const psq = (s) => "'" + String(s).replace(/'/g, "''") + "'";            // PowerShell single-quoted
+const shq = (s) => '"' + String(s).replace(/(["$\\])/g, "\\$1") + '"'; // sh double-quoted
+
+// One HOOK entry that runs <file> under this app's binary as Node. Windows forces the PowerShell
+// shell form (Claude picks Git Bash or PowerShell there, and the command differs); macOS/Linux use
+// the plain `sh -c` form. Both were verified to deliver the hook's stdin.
 function hookEntry(file, extra) {
   const script = fwd(path.join(hooksDir(), file));
   const exe = fwd(process.execPath);
   const base = process.platform === "win32"
-    ? { type: "command", shell: "powershell", command: `$env:ELECTRON_RUN_AS_NODE='1'; & '${exe.replace(/'/g, "''")}' '${script.replace(/'/g, "''")}'` }
-    : { type: "command", command: `ELECTRON_RUN_AS_NODE=1 "${exe.replace(/(["$\\])/g, "\\$1")}" "${script.replace(/(["$\\])/g, "\\$1")}"` };
+    ? { type: "command", shell: "powershell", command: `$env:ELECTRON_RUN_AS_NODE='1'; & ${psq(exe)} ${psq(script)}` }
+    : { type: "command", command: `ELECTRON_RUN_AS_NODE=1 ${shq(exe)} ${shq(script)}` };
   return { ...base, timeout: 10, ...extra };
 }
 
-function settingsJson() {
-  const bg = { async: true }; // Stop/Notification are pure side effects: never delay the turn end
-  const attn = () => hookEntry("vt-hook-attention.js"); // synchronous so Pre/Post writes keep their order
-  return JSON.stringify({ hooks: {
-    SessionStart: [{ hooks: [hookEntry("vt-hook-session.js")] }],
-    PreToolUse: [{ matcher: "AskUserQuestion", hooks: [attn()] }],
-    PostToolUse: [{ matcher: "AskUserQuestion", hooks: [attn()] }],
-    PostToolUseFailure: [{ matcher: "AskUserQuestion", hooks: [attn()] }],
-    Stop: [{ hooks: [hookEntry("vt-hook-event.js", bg)] }],
-    Notification: [{ hooks: [hookEntry("vt-hook-event.js", bg)] }],
-  } }, null, 2) + "\n";
+// The STATUS LINE entry. Unlike hooks, a statusLine command ignores the "shell" field and on Windows
+// always runs under Git Bash (verified: PowerShell syntax fails, a .cmd invoked by path works), so
+// Windows gets a tiny launcher batch file that sets ELECTRON_RUN_AS_NODE and execs the app binary.
+// --branch turns on the git-branch segment (statusline.js).
+function statusLineEntry(cfg) {
+  const script = path.join(hooksDir(), STATUSLINE_FILE);
+  const flags = cfg.statusLineGitBranch ? ["--branch"] : [];
+  if (process.platform === "win32") {
+    const launcher = path.join(hooksDir(), STATUSLINE_LAUNCHER);
+    const q = (s) => '"' + String(s).replace(/\//g, "\\") + '"';
+    writeIfChanged(launcher, ["@echo off", "set ELECTRON_RUN_AS_NODE=1", [q(process.execPath), q(script), ...flags, "%*"].join(" "), ""].join("\r\n"));
+    return { type: "command", command: `"${fwd(launcher)}"` };
+  }
+  return { type: "command", command: [`ELECTRON_RUN_AS_NODE=1 ${shq(process.execPath)} ${shq(script)}`, ...flags].join(" ") };
+}
+
+// The claude-hooks.json content for the current settings, or null when nothing is enabled.
+function settingsJson(cfg) {
+  const out = {};
+  if (cfg.claudeHooks) {
+    const bg = { async: true }; // Stop/Notification are pure side effects: never delay the turn end
+    const attn = () => hookEntry("vt-hook-attention.js"); // synchronous so Pre/Post writes keep their order
+    out.hooks = {
+      SessionStart: [{ hooks: [hookEntry("vt-hook-session.js")] }],
+      PreToolUse: [{ matcher: "AskUserQuestion", hooks: [attn()] }],
+      PostToolUse: [{ matcher: "AskUserQuestion", hooks: [attn()] }],
+      PostToolUseFailure: [{ matcher: "AskUserQuestion", hooks: [attn()] }],
+      Stop: [{ hooks: [hookEntry("vt-hook-event.js", bg)] }],
+      Notification: [{ hooks: [hookEntry("vt-hook-event.js", bg)] }],
+    };
+  }
+  if (cfg.claudeStatusLine) out.statusLine = statusLineEntry(cfg);
+  return Object.keys(out).length ? JSON.stringify(out, null, 2) + "\n" : null;
 }
 
 // Write a file only when its content differs (no mtime churn); tmp + rename.
@@ -133,38 +163,45 @@ function writeIfChanged(p, content) {
   return true;
 }
 
-// { installed, runtime, hooksDir, settingsFile, reason }. installed = all four files present.
+// { installed, hooks, statusLine, runtime, hooksDir, settingsFile, reason }. installed = claude-hooks.json
+// exists, i.e. at least one of the two features is on and its files are written.
 function status() {
+  const cfg = settings.get();
   try {
-    const present = [...SCRIPTS.map((s) => path.join(hooksDir(), s.file)), settingsFile()].every((p) => fs.existsSync(p));
-    return { installed: present, runtime: process.execPath, hooksDir: hooksDir(), settingsFile: settingsFile(), reason: null };
+    const installed = fs.existsSync(settingsFile());
+    return { installed, hooks: installed && !!cfg.claudeHooks, statusLine: installed && !!cfg.claudeStatusLine, runtime: process.execPath, hooksDir: hooksDir(), settingsFile: settingsFile(), reason: null };
   } catch (err) {
-    return { installed: false, runtime: process.execPath, hooksDir: hooksDir(), settingsFile: settingsFile(), reason: String(err) };
+    return { installed: false, hooks: false, statusLine: false, runtime: process.execPath, hooksDir: hooksDir(), settingsFile: settingsFile(), reason: String(err) };
   }
 }
 
-// Write/refresh the scripts and claude-hooks.json (the latter embeds process.execPath, which
-// changes when the app moves or updates, so this runs on every launch). Idempotent; never throws.
+// Write/refresh the scripts, the status line copy and claude-hooks.json from the current settings
+// (the json embeds process.execPath, which changes when the app moves or updates, so this runs on
+// every launch and after every settings change). With both features off the json is removed, so
+// claude gets no --settings. Idempotent; never throws.
 function ensure() {
   try {
+    const cfg = settings.get();
     fs.mkdirSync(hooksDir(), { recursive: true });
     for (const s of SCRIPTS) writeIfChanged(path.join(hooksDir(), s.file), s.src);
-    writeIfChanged(settingsFile(), settingsJson());
+    writeIfChanged(path.join(hooksDir(), STATUSLINE_FILE), fs.readFileSync(path.join(__dirname, "statusline.js"), "utf8"));
+    const json = settingsJson(cfg);
+    if (json) writeIfChanged(settingsFile(), json);
+    else { try { fs.rmSync(settingsFile(), { force: true }); } catch { /* ignore */ } }
     return status();
   } catch (err) {
-    return { installed: false, runtime: process.execPath, hooksDir: hooksDir(), settingsFile: settingsFile(), reason: String(err) };
+    return { installed: false, hooks: false, statusLine: false, runtime: process.execPath, hooksDir: hooksDir(), settingsFile: settingsFile(), reason: String(err) };
   }
 }
 
-// Remove claude-hooks.json so new panes stop getting --settings (status().installed goes false).
-// The scripts stay: Claude panes already running loaded their hooks at startup and still call them.
-// Nothing outside userData was ever written.
+// Remove claude-hooks.json so new panes stop getting --settings. The scripts stay: Claude panes already
+// running loaded their hooks at startup and still call them. Nothing outside userData was ever written.
 function uninstall() {
   try { fs.rmSync(settingsFile(), { force: true }); } catch { /* ignore */ }
   return status();
 }
 
-// The --settings path to pass to claude, or null when the hooks aren't installed.
-function settingsArg() { return status().installed ? settingsFile() : null; }
+// The --settings path to pass to claude, or null when nothing is enabled.
+function settingsArg() { return fs.existsSync(settingsFile()) ? settingsFile() : null; }
 
-module.exports = { ensure, install: ensure, uninstall, status, settingsArg, hooksDir, settingsFile, SCRIPTS };
+module.exports = { ensure, install: ensure, uninstall, status, settingsArg, hooksDir, settingsFile, SCRIPTS, STATUSLINE_FILE };

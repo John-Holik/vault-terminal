@@ -9,7 +9,9 @@ const DEFAULTS = {
   defaultShell: null,          // shell id from shells.listShells(); null -> shells.defaultShellId()
   defaultCwd: null,            // absolute dir; null -> os.homedir()
   claudeSkipPermissions: true, // spawn claude with --dangerously-skip-permissions
-  claudeHooks: true,           // install/keep the 3 pane hooks in ~/.claude
+  claudeHooks: true,           // pane hooks (session resume, awaiting/finished dots) via --settings
+  claudeStatusLine: true,      // the app's status line for Claude panes (statusline.js) via --settings
+  statusLineGitBranch: true,   // status line shows the current git branch after the folder name
   fontSize: 12.5,              // xterm fontSize (renderer reads it)
   closeToTray: true,           // window close hides to tray while PTYs are alive
   macOptionIsMeta: true,       // macOS: Option sends Meta (Claude's Option+P/T); off to type @ [ ] { } | ~ on non-US layouts

@@ -121,6 +121,14 @@
             <input type="checkbox" id="s-hooks" />
             <span><b>Claude status hooks</b><small>Lets panes resume the right session after a restart and show when Claude is waiting on you. Kept in this app's data folder and passed to Claude with --settings; nothing in ~/.claude is modified.</small></span>
           </label>
+          <label class="fcheck">
+            <input type="checkbox" id="s-statusline" />
+            <span><b>Vault Terminal status line</b><small>Claude panes show model, effort, context left, 5-hour usage, last-message size and folder. Delivered the same way as the hooks.</small></span>
+          </label>
+          <label class="fcheck">
+            <input type="checkbox" id="s-gitbranch" />
+            <span><b>Show git branch in the status line</b><small>Appends the current branch after the folder name.</small></span>
+          </label>
           <div id="s-hooks-status" class="fstatus"></div>
           <label class="fcheck">
             <input type="checkbox" id="s-tray" />

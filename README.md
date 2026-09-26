@@ -63,6 +63,8 @@ The hook scripts live in the app's user-data folder (`hooks/`, next to a small `
 
 The hooks run on the app's own bundled runtime, so they do not need Node.js installed. To turn them off, uncheck **Claude status hooks** in Settings (gear icon); panes then launch without `--settings`.
 
+**Status line:** Claude panes show the app's status line (model, effort level, context left, 5-hour usage, last-message size, current folder). It is delivered through the same `--settings` file and runs on the bundled runtime, so it works on any machine with no setup; it takes precedence over a status line in your own settings while inside the app. **Show git branch in the status line** adds the current branch after the folder name. Turn the whole thing off with **Vault Terminal status line** in Settings. Based on the GSD plugin's status line; to use the same script outside the app, run `node statusline.js` (add `--branch` for the branch segment) as your `statusLine` command.
+
 **Skip Claude permission prompts** (on by default) launches Claude with `--dangerously-skip-permissions`. Turn it off in Settings if you want Claude to ask before running tools.
 
 ## Keyboard

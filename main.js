@@ -238,7 +238,7 @@ function spawnPty({ shell, cwd, cols, rows, resumeId, sessionId, paneKey }) {
     resumeId = null;
   }
   // Claude panes get the app's pane hooks via --settings (hooks.js); Claude merges them with the user's own.
-  const settingsFile = shell === "claude" && cfg.claudeHooks ? hooks.settingsArg() : null;
+  const settingsFile = shell === "claude" && (cfg.claudeHooks || cfg.claudeStatusLine) ? hooks.settingsArg() : null;
   const { file, args } = shells.shellArgv(shell, { resumeId, sessionId, skipPermissions: cfg.claudeSkipPermissions, settingsFile });
   const id = "p" + PTY_RUN + "-" + ++ptySeq;
   const dir = cwd && fs.existsSync(cwd) ? cwd : cfg.defaultCwd;
@@ -250,7 +250,7 @@ function spawnPty({ shell, cwd, cols, rows, resumeId, sessionId, paneKey }) {
   for (const k of ["VT_PANE_KEY", "VT_PANE_DIR", "VCC_PANE_KEY", "VCC_PANE_DIR", "CLAUDECODE"]) delete env[k];
   // Tag Claude panes so the pane-session SessionStart hook can report this pane's current
   // session id back to us (it rotates on /clear, /resume, compaction).
-  if (shell === "claude" && paneKey && settingsFile) {
+  if (shell === "claude" && paneKey && settingsFile && cfg.claudeHooks) {
     env.VT_PANE_KEY = paneKey;
     env.VT_PANE_DIR = sessions.paneSessionsDir();
   }
@@ -298,7 +298,8 @@ function killAllPtys() {
 function registerIpc() {
   // settings
   ipcMain.handle("settings-get", () => settings.get());
-  ipcMain.handle("settings-set", (e, patch) => settings.set(patch || {}));
+  // Re-derive claude-hooks.json after every change, so the hooks / status line toggles apply to the next pane.
+  ipcMain.handle("settings-set", (e, patch) => { const s = settings.set(patch || {}); hooks.ensure(); return s; });
 
   // shells + Claude pane hooks
   ipcMain.handle("shells-list", () => shells.listShells());
@@ -497,6 +498,22 @@ async function smokeMain() {
     }
     log({ step: "hooks", ok: hooksOk, settingsFile: hs.settingsFile, ...(hooksOk ? {} : { status: hs, err: hookErr }) });
 
+    // 2c. status line: render once through the runtime with a sample payload (with --branch) and check the
+    // folder name comes back; the repo checkout is a git repo, so the branch segment runs too.
+    let slOk = false, slOut = "";
+    {
+      const { spawnSync } = require("child_process");
+      const dir = app.getAppPath();
+      const r = spawnSync(process.execPath, [path.join(hooks.hooksDir(), hooks.STATUSLINE_FILE), "--branch"], {
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+        input: JSON.stringify({ model: { display_name: "Opus" }, workspace: { current_dir: dir }, context_window: { remaining_percentage: 72, total_tokens: 1000000 } }),
+        encoding: "utf8", timeout: 15000,
+      });
+      slOut = (r.stdout || "") + (r.stderr ? " stderr:" + r.stderr : "");
+      slOk = r.status === 0 && (r.stdout || "").includes(path.basename(dir));
+    }
+    log({ step: "statusline", ok: slOk, ...(slOk ? {} : { out: slOut.slice(0, 400) }) });
+
     // 3. renderer: load the real UI hidden, collect console errors, check the grid rendered
     registerIpc();
     const errors = [];
@@ -526,7 +543,7 @@ async function smokeMain() {
     log({ step: "renderer", ok: rendererOk, errors });
 
     // 4. done
-    const ok = ptyOk && hooksOk && rendererOk;
+    const ok = ptyOk && hooksOk && slOk && rendererOk;
     log({ step: "done", ok });
     killAllPtys();
     app.exit(ok ? 0 : 1);
@@ -548,7 +565,7 @@ if (SMOKE) {
     // Merge the login-shell PATH first (macOS/Linux GUI launches get a bare PATH), before anything spawns.
     shells.loginPath();
     // Keep the Claude pane hooks current (idempotent) before any Claude pane spawns.
-    if (settings.get().claudeHooks) hooks.ensure();
+    hooks.ensure(); // writes or removes claude-hooks.json per the hooks / status line settings
     if (process.platform === "win32") app.setAppUserModelId("com.johnholik.vaultterminal");
     setAppMenu();
     registerIpc();

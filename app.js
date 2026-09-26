@@ -64,9 +64,10 @@
   function renderHooks(st) {
     const el = $("s-hooks-status");
     let kind, text;
-    if (st.installed) { kind = "ok"; text = "Installed in " + (st.hooksDir || "the app data folder"); }
+    const parts = [st.hooks && "hooks", st.statusLine && "status line"].filter(Boolean).join(" + ");
+    if (st.installed) { kind = "ok"; text = "Active (" + parts + ") in " + (st.hooksDir || "the app data folder"); }
     else if (st.reason) { kind = "warn"; text = st.reason; }
-    else { kind = ""; text = "Not installed"; }
+    else { kind = ""; text = "Off"; }
     el.className = "fstatus " + kind;
     el.innerHTML = `<span title="${E(text)}">${E(text)}</span>`;
   }
@@ -78,6 +79,8 @@
     $("s-cwd").title = s.defaultCwd;
     $("s-skip").checked = !!s.claudeSkipPermissions;
     $("s-hooks").checked = !!s.claudeHooks;
+    $("s-statusline").checked = !!s.claudeStatusLine;
+    $("s-gitbranch").checked = !!s.statusLineGitBranch;
     $("s-font").value = s.fontSize;
     $("s-tray").checked = !!s.closeToTray;
     $("s-optmeta").checked = !!s.macOptionIsMeta;
@@ -114,14 +117,16 @@
       const v = parseFloat(e.target.value);
       if (v >= 8 && v <= 32) save({ fontSize: v });
     };
-    $("s-hooks").onchange = async (e) => {
-      const box = e.target;
-      const on = box.checked;
+    // Hooks and status line share claude-hooks.json; main rewrites it from the settings on install.
+    const refreshClaudeFiles = async (box, patch) => {
       box.disabled = true;
-      await save({ claudeHooks: on });
-      renderHooks(on ? await A.hooksInstall() : await A.hooksUninstall());
+      await save(patch);
+      renderHooks(await A.hooksInstall());
       box.disabled = false;
     };
+    $("s-hooks").onchange = (e) => refreshClaudeFiles(e.target, { claudeHooks: e.target.checked });
+    $("s-statusline").onchange = (e) => refreshClaudeFiles(e.target, { claudeStatusLine: e.target.checked });
+    $("s-gitbranch").onchange = (e) => refreshClaudeFiles(e.target, { statusLineGitBranch: e.target.checked });
   }
 
   /* ---- boot overlay ---- */
